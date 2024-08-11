@@ -1,3 +1,4 @@
+import sqlite3
 import discord
 from discord import app_commands
 from threading import Lock
@@ -15,14 +16,9 @@ class DiscordClient(discord.Client):
 
     async def on_ready(self):
         print(f'Logged on as {self.user}!')
-        print(f'Guilds connected to: {", ".join(guild.name for guild in self.guilds)}')
-
         if not self.synced:
-            print("Syncing commands...")
             await self.tree.sync()
             self.synced = True
-            print("Commands have been synced with Discord API")
-
         print("Client is ready!")
     async def get_channel_id(self, name):
         channel = discord.utils.get(self.get_all_channels(), name=name)
@@ -44,17 +40,26 @@ client = DiscordClient(intents=discord.Intents.default())
 
 @client.tree.command(name="learn", description="Request to learn a course")
 async def learn(interaction: discord.Interaction, course: str):
-    print(f"Slash command 'learn' triggered by {interaction.user.name} with course: {course}")
 
     guild_id = interaction.guild_id
     course_lower = course.lower()
 
-    # Check if the course description contains any filtered words
-    if guild_id in client.filter_lists:
-        for word in client.filter_lists[guild_id]:
-            if word in course_lower:
-                await interaction.response.send_message(f"The course description contains a prohibited word: '{word}'. Please try again.")
-                return
+    conn = sqlite3.connect('filters.db')
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT filter_word FROM filters WHERE guild_id = ?
+    ''', (guild_id,))
+    rows = cursor.fetchall()
+
+    for row in rows:
+        word = row[0]
+        if word in course_lower:
+            await interaction.response.send_message(f"The course description contains a prohibited word: '{word}'. Please try again.")
+            conn.close()
+            return
+
+    conn.close()
             
     reply = f"{interaction.user.mention} Generating course: {course}..."
     await interaction.response.send_message(reply)
@@ -62,7 +67,6 @@ async def learn(interaction: discord.Interaction, course: str):
     result = ""
     try:
         with lock: 
-            print("Sending HTTP request to /v1/discord/zeroshot_trigger...")
             response = requests.post(
                 config.API_ENDPOINT,
                 json={
@@ -84,31 +88,57 @@ async def learn(interaction: discord.Interaction, course: str):
 async def add_filter(interaction: discord.Interaction, word: str):
     guild_id = interaction.guild_id
     
-    if guild_id not in client.filter_lists:
-        client.filter_lists[guild_id] = []
+    conn = sqlite3.connect('filters.db')
+    cursor = conn.cursor()
     
-    if word not in client.filter_lists[guild_id]:
-        client.filter_lists[guild_id].append(word)
+    try:
+        cursor.execute('''
+            INSERT INTO filters (guild_id, filter_word)
+            VALUES (?, ?)
+        ''', (guild_id, word))
+        conn.commit()
         await interaction.response.send_message(f"'{word}' has been added to the filter list.")
-    else:
+    except sqlite3.IntegrityError:
         await interaction.response.send_message(f"'{word}' is already in the filter list.")
+    finally:
+        conn.close()
+
 
 @client.tree.command(name="removefilter", description="Remove a word from the filter list for this server")
 async def remove_filter(interaction: discord.Interaction, word: str):
     guild_id = interaction.guild_id
 
-    if guild_id in client.filter_lists and word in client.filter_lists[guild_id]:
-        client.filter_lists[guild_id].remove(word)
+    conn = sqlite3.connect('filters.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        DELETE FROM filters WHERE guild_id = ? AND filter_word = ?
+    ''', (guild_id, word))
+    
+    if cursor.rowcount > 0:
         await interaction.response.send_message(f"'{word}' has been removed from the filter list.")
     else:
         await interaction.response.send_message(f"'{word}' is not in the filter list.")
+    
+    conn.commit()
+    conn.close()
 
 @client.tree.command(name="viewfilter", description="View the current filter list for this server")
 async def view_filter(interaction: discord.Interaction):
     guild_id = interaction.guild_id
 
-    if guild_id in client.filter_lists and client.filter_lists[guild_id]:
-        filter_list = ", ".join(client.filter_lists[guild_id])
+    conn = sqlite3.connect('filters.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT filter_word FROM filters WHERE guild_id = ?
+    ''', (guild_id,))
+    rows = cursor.fetchall()
+    
+    if rows:
+        filter_list = ", ".join(row[0] for row in rows)
         await interaction.response.send_message(f"Current filter list: {filter_list}")
     else:
         await interaction.response.send_message("There are no words in the filter list.")
+    
+    conn.close()

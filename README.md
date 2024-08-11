@@ -13,9 +13,3 @@
 
 OAUTH2 url to invite discord bot
 https://discord.com/oauth2/authorize?client_id=1247671957596672150&permissions=826781297664&scope=bot
-
-## running discord bot
-
-celery need to be running first
-
-python -m pipeline.discord.app

@@ -1,3 +1,5 @@
 discord/config.py
+discord/filters.db
+discord/dbScript.py
 __pycache__/
 *pyc
