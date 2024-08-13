@@ -4,6 +4,7 @@ from discord import app_commands
 from threading import Lock
 import requests
 import config
+from better_profanity import profanity
 
 lock = Lock()
 
@@ -13,6 +14,7 @@ class DiscordClient(discord.Client):
         self.synced = False
         self.tree = app_commands.CommandTree(self)
         self.filter_lists = {} 
+        profanity.load_censor_words()
 
     async def on_ready(self):
         print(f'Logged on as {self.user}!')
@@ -43,10 +45,12 @@ async def learn(interaction: discord.Interaction, course: str):
 
     guild_id = interaction.guild_id
     course_lower = course.lower()
-
+    if profanity.contains_profanity(course_lower):
+        await interaction.response.send_message("The course description contains prohibited content from the default filter. Please try again with a different description.", ephemeral=True)
+        return
     conn = sqlite3.connect('filters.db')
     cursor = conn.cursor()
-
+    
     cursor.execute('''
         SELECT filter_word FROM filters WHERE guild_id = ?
     ''', (guild_id,))
@@ -55,7 +59,7 @@ async def learn(interaction: discord.Interaction, course: str):
     for row in rows:
         word = row[0]
         if word in course_lower:
-            await interaction.response.send_message(f"The course description contains a prohibited word: '{word}'. Please try again.")
+            await interaction.response.send_message(f"The course description contains a prohibited word: '{word}' from the custom filter. Please try again with a different description.", ephemeral=True)
             conn.close()
             return
 
@@ -79,7 +83,7 @@ async def learn(interaction: discord.Interaction, course: str):
             print("HTTP request sent.")
     except Exception as e:
         result = None 
-        await interaction.followup.send("An unexpected error occurred. Please try again later.")
+        await interaction.followup.send("An unexpected error occurred. Please try again later.", ephemeral=True)
     finally:
         if result:
             await interaction.followup.send(result)
@@ -98,9 +102,9 @@ async def add_filter(interaction: discord.Interaction, word: str):
             VALUES (?, ?)
         ''', (guild_id, word))
         conn.commit()
-        await interaction.response.send_message(f"'{word}' has been added to the filter list.")
+        await interaction.response.send_message(f"'{word}' has been added to the filter list.", ephemeral=True)
     except sqlite3.IntegrityError:
-        await interaction.response.send_message(f"'{word}' is already in the filter list.")
+        await interaction.response.send_message(f"'{word}' is already in the filter list.", ephemeral=True)
     finally:
         conn.close()
 
@@ -118,7 +122,7 @@ async def remove_filter(interaction: discord.Interaction, word: str):
     ''', (guild_id, word))
     
     if cursor.rowcount > 0:
-        await interaction.response.send_message(f"'{word}' has been removed from the filter list.")
+        await interaction.response.send_message(f"'{word}' has been removed from the filter list.", ephemeral=True)
     else:
         await interaction.response.send_message(f"'{word}' is not in the filter list.")
     
@@ -140,9 +144,9 @@ async def view_filter(interaction: discord.Interaction):
     
     if rows:
         filter_list = ", ".join(row[0] for row in rows)
-        await interaction.response.send_message(f"Current filter list: {filter_list}")
+        await interaction.response.send_message(f"Current filter list: {filter_list}", ephemeral=True)
     else:
-        await interaction.response.send_message("There are no words in the filter list.")
+        await interaction.response.send_message("There are no words in the filter list.", ephemeral=True)
     
     conn.close()
 
