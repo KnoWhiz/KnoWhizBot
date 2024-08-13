@@ -85,6 +85,7 @@ async def learn(interaction: discord.Interaction, course: str):
             await interaction.followup.send(result)
 
 @client.tree.command(name="addfilter", description="Add a word to the filter list for this server")
+@app_commands.checks.has_permissions(administrator=True)
 async def add_filter(interaction: discord.Interaction, word: str):
     guild_id = interaction.guild_id
     
@@ -105,6 +106,7 @@ async def add_filter(interaction: discord.Interaction, word: str):
 
 
 @client.tree.command(name="removefilter", description="Remove a word from the filter list for this server")
+@app_commands.checks.has_permissions(administrator=True)
 async def remove_filter(interaction: discord.Interaction, word: str):
     guild_id = interaction.guild_id
 
@@ -124,6 +126,7 @@ async def remove_filter(interaction: discord.Interaction, word: str):
     conn.close()
 
 @client.tree.command(name="viewfilter", description="View the current filter list for this server")
+@app_commands.checks.has_permissions(administrator=True)
 async def view_filter(interaction: discord.Interaction):
     guild_id = interaction.guild_id
 
@@ -142,3 +145,22 @@ async def view_filter(interaction: discord.Interaction):
         await interaction.response.send_message("There are no words in the filter list.")
     
     conn.close()
+
+@add_filter.error
+async def add_filter_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("You don't have permission to add filters.", ephemeral=True)
+    else:
+        await interaction.response.send_message("An error occurred while adding the filter.", ephemeral=True)
+@remove_filter.error
+async def remove_filter_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("You don't have permission to remove filters.", ephemeral=True)
+    else:
+        await interaction.response.send_message("An error occurred while removing the filter.", ephemeral=True)
+@view_filter.error
+async def view_filter_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("You don't have permission to view filters.", ephemeral=True)
+    else:
+        await interaction.response.send_message("An error occurred while viewing the filter list.", ephemeral=True)
