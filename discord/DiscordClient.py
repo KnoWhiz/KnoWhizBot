@@ -88,47 +88,6 @@ async def learn(interaction: discord.Interaction, course: str):
         if result:
             await interaction.followup.send(result)
 
-@client.tree.command(name="addfilter", description="Add a word to the filter list for this server")
-@app_commands.checks.has_permissions(administrator=True)
-async def add_filter(interaction: discord.Interaction, word: str):
-    guild_id = interaction.guild_id
-    
-    conn = sqlite3.connect('filters.db')
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            INSERT INTO filters (guild_id, filter_word)
-            VALUES (?, ?)
-        ''', (guild_id, word))
-        conn.commit()
-        await interaction.response.send_message(f"'{word}' has been added to the filter list.", ephemeral=True)
-    except sqlite3.IntegrityError:
-        await interaction.response.send_message(f"'{word}' is already in the filter list.", ephemeral=True)
-    finally:
-        conn.close()
-
-
-@client.tree.command(name="removefilter", description="Remove a word from the filter list for this server")
-@app_commands.checks.has_permissions(administrator=True)
-async def remove_filter(interaction: discord.Interaction, word: str):
-    guild_id = interaction.guild_id
-
-    conn = sqlite3.connect('filters.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        DELETE FROM filters WHERE guild_id = ? AND filter_word = ?
-    ''', (guild_id, word))
-    
-    if cursor.rowcount > 0:
-        await interaction.response.send_message(f"'{word}' has been removed from the filter list.", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"'{word}' is not in the filter list.")
-    
-    conn.commit()
-    conn.close()
-
 @client.tree.command(name="viewfilter", description="View the current filter list for this server")
 @app_commands.checks.has_permissions(administrator=True)
 async def view_filter(interaction: discord.Interaction):
@@ -150,18 +109,94 @@ async def view_filter(interaction: discord.Interaction):
     
     conn.close()
 
-@add_filter.error
-async def add_filter_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("You don't have permission to add filters.", ephemeral=True)
-    else:
-        await interaction.response.send_message("An error occurred while adding the filter.", ephemeral=True)
+@client.tree.command(name="addfilter", description="Upload a text file to add words to the filter list")
+@app_commands.checks.has_permissions(administrator=True)
+async def add_filter(interaction: discord.Interaction, file: discord.Attachment):
+    if not file.filename.endswith('.txt'):
+        await interaction.response.send_message("Please upload a `.txt` file.", ephemeral=True)
+        return
+    
+    try:
+        file_content = await file.read()
+        content = file_content.decode('utf-8').strip()
+        
+        if not all(word.strip().isalnum() for word in content.split(',')):
+            await interaction.response.send_message("The file format is incorrect. Please ensure the file contains words separated by commas with no special characters.", ephemeral=True)
+            return
+        
+        words = [word.strip() for word in content.split(',')]
+        guild_id = interaction.guild_id
+        
+        conn = sqlite3.connect('filters.db')
+        cursor = conn.cursor()
+
+        for word in words:
+            try:
+                cursor.execute('''
+                    INSERT INTO filters (guild_id, filter_word)
+                    VALUES (?, ?)
+                ''', (guild_id, word))
+            except sqlite3.IntegrityError:
+                pass 
+
+        conn.commit()
+        conn.close()
+        
+        await interaction.response.send_message(f"Successfully added {len(words)} words to the filter list.", ephemeral=True)
+    
+    except Exception as e:
+        await interaction.response.send_message("Failed to process the file. Please ensure it is in the correct format.", ephemeral=True)
+
+@client.tree.command(name="removefilter", description="Upload a text file to remove words from the filter list")
+@app_commands.checks.has_permissions(administrator=True)
+async def remove_filter(interaction: discord.Interaction, file: discord.Attachment):
+    if not file.filename.endswith('.txt'):
+        await interaction.response.send_message("Please upload a `.txt` file.", ephemeral=True)
+        return
+    
+    try:
+        file_content = await file.read()
+        content = file_content.decode('utf-8').strip()
+        
+        if not all(word.strip().isalnum() for word in content.split(',')):
+            await interaction.response.send_message("The file format is incorrect. Please ensure the file contains words separated by commas with no special characters.", ephemeral=True)
+            return
+        
+        words = [word.strip() for word in content.split(',')]
+        guild_id = interaction.guild_id
+        
+        conn = sqlite3.connect('filters.db')
+        cursor = conn.cursor()
+
+        # Remove each word from the filter list
+        for word in words:
+            cursor.execute('''
+                DELETE FROM filters WHERE guild_id = ? AND filter_word = ?
+            ''', (guild_id, word))
+
+        conn.commit()
+        conn.close()
+        
+        await interaction.response.send_message(f"Successfully removed {len(words)} words from the filter list.", ephemeral=True)
+    
+    except Exception as e:
+        await interaction.response.send_message("Failed to process the file. Please ensure it is in the correct format.", ephemeral=True)
+
 @remove_filter.error
-async def remove_filter_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+async def remove_filter_file_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("You don't have permission to remove filters.", ephemeral=True)
     else:
-        await interaction.response.send_message("An error occurred while removing the filter.", ephemeral=True)
+        await interaction.response.send_message("An error occurred while processing the file.", ephemeral=True)
+
+
+@add_filter.error
+async def add_filter_file_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("You don't have permission to add filters.", ephemeral=True)
+    else:
+        await interaction.response.send_message("An error occurred while processing the file.", ephemeral=True)
+
 @view_filter.error
 async def view_filter_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.MissingPermissions):
