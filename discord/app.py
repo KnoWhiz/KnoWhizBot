@@ -45,4 +45,4 @@ async def before_serving():
 if __name__ == '__main__':
     app.config['JSON_AS_ASCII'] = False
     app.config['JSONIFY_MIMETYPE'] = "application/json;charset=utf-8"
-    app.run(debug=True, port=config.APP_PORT)
+    app.run(debug=True, host='0.0.0.0', port=config.APP_PORT)
