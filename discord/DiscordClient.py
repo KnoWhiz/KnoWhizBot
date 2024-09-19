@@ -5,6 +5,7 @@ from threading import Lock
 import requests
 import config
 from better_profanity import profanity
+import aiohttp
 
 lock = Lock()
 
@@ -68,10 +69,9 @@ async def learn(interaction: discord.Interaction, course: str):
     reply = f"{interaction.user.mention} Generating course: {course}..."
     await interaction.response.send_message(reply)
     
-    result = ""
     try:
-        with lock: 
-            response = requests.post(
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
                 config.API_ENDPOINT,
                 json={
                     "course_description": course,
@@ -79,14 +79,10 @@ async def learn(interaction: discord.Interaction, course: str):
                     "mention": interaction.user.mention
                 },
                 timeout=10
-            )
-            print("HTTP request sent.")
+            ) as response:
+                print("HTTP request sent.")
     except Exception as e:
-        result = None 
         await interaction.followup.send("An unexpected error occurred. Please try again later.", ephemeral=True)
-    finally:
-        if result:
-            await interaction.followup.send(result)
 
 @client.tree.command(name="viewfilter", description="View the current filter list for this server")
 @app_commands.checks.has_permissions(administrator=True)
